@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>拾光小筑 · 3D 建房工坊 Demo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='20' width='52' height='38' rx='8' fill='%23E8835A'/%3E%3Cpath d='M6 26 L32 6 L58 26' fill='%234F6D54'/%3E%3Crect x='26' y='36' width='12' height='22' rx='3' fill='%23FBF6EC'/%3E%3Ccircle cx='44' cy='30' r='3' fill='%23F2CE8E'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+/* ===== 基础与设计令牌 ===== */
+:root{
+  --paper:#F7F1E3;
+  --card:#FFFDF8;
+  --ink:#3E3A33;
+  --ink-soft:#8C8274;
+  --green:#4F6D54;
+  --green-deep:#3D5642;
+  --green-soft:#E4EBE1;
+  --orange:#E8835A;
+  --orange-deep:#D96A3F;
+  --butter:#F2CE8E;
+  --blue:#8FB8C9;
+  --blue-soft:#E3EEF2;
+  --line:#E8DECB;
+  --radius:18px;
+  --shadow:0 6px 16px rgba(62,58,51,.08);
+  --shadow-lift:0 10px 24px rgba(62,58,51,.14);
+  --font:'Noto Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--paper);color:var(--ink);overflow:hidden;touch-action:manipulation}
+button{font-family:var(--font);border:none;background:none;cursor:pointer;color:inherit}
+button:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.hidden{display:none!important}
+
+/* ===== 桌面壳 ===== */
+#stage{min-height:100dvh;display:flex;align-items:center;justify-content:center;gap:clamp(20px,4vw,64px);padding:24px}
+#stage-bg{position:fixed;inset:0;background:var(--paper);z-index:-1}
+#stage-bg::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(79,109,84,.10) 1.5px,transparent 1.5px);background-size:26px 26px}
+.stage-note{display:none;flex-direction:column;gap:18px;max-width:320px}
+.stage-note .kicker{color:var(--green);font-weight:700;letter-spacing:.14em;font-size:13px}
+.stage-note h1{font-size:30px;line-height:1.3;font-weight:900}
+.stage-note p{color:var(--ink-soft);font-size:14px;line-height:1.8}
+.stage-note .badges{display:flex;flex-wrap:wrap;gap:8px}
+.stage-note .badge{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--green-deep);font-weight:500}
+
+/* ===== 手机框 ===== */
+#phone{position:relative;width:min(430px,100vw);height:min(880px,calc(100dvh - 48px));min-height:660px;background:var(--paper);border-radius:36px;box-shadow:0 24px 60px rgba(62,58,51,.22),0 0 0 1px rgba(62,58,51,.06);overflow:hidden;display:flex;flex-direction:column}
+@media (max-width:640px){
+  #stage{padding:0}
+  #phone{width:100vw;height:100dvh;min-height:0;border-radius:0;box-shadow:none}
+}
+
+/* ===== 顶栏 ===== */
+#topbar{flex:none;display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;position:relative;z-index:5}
+.brand{display:flex;align-items:center;gap:8px}
+.brand .logo{width:34px;height:34px;flex:none}
+.brand .name{font-size:17px;font-weight:900;letter-spacing:.02em}
+.brand .sub{font-size:10px;color:var(--ink-soft);font-weight:500;letter-spacing:.08em}
+.coin-pill{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;box-shadow:var(--shadow)}
+.coin-pill svg{width:18px;height:18px;flex:none}
+.coin-num{font-weight:900;font-size:15px;min-width:38px;text-align:right}
+
+/* ===== 内容区 ===== */
+#content{flex:1;overflow:hidden;position:relative}
+.view{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden}
+.view.active{display:flex}
+.view-scroll{flex:1;overflow-y:auto;padding:4px 16px 20px;scrollbar-width:none}
+.view-scroll::-webkit-scrollbar{display:none}
+
+/* ===== 底部导航 ===== */
+#tabbar{flex:none;display:flex;border-top:1px solid var(--line);background:var(--card);padding:6px 8px calc(8px + env(safe-area-inset-bottom));position:relative;z-index:6}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0 4px;border-radius:14px;color:var(--ink-soft);transition:color .18s,background .18s;font-size:11px;font-weight:500}
+.tab svg{width:24px;height:24px}
+.tab.on{color:var(--green-deep);background:var(--green-soft);font-weight:700}
+.tab .t-label{letter-spacing:.02em}
+
+/* ===== 通用控件 ===== */
+.sec-title{display:flex;align-items:baseline;justify-content:space-between;margin:14px 2px 10px}
+.sec-title h2{font-size:16px;font-weight:900}
+.sec-title .hint{font-size:11px;color:var(--ink-soft)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:9px 16px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--ink-soft);min-height:44px;display:flex;align-items:center;justify-content:center}
+.chip.on{background:var(--green);border-color:var(--green);color:#fff}
+.rar-common{color:var(--ink-soft)}
+.rar-rare{color:#B0844A}
+.rar-epic{color:#A96BB0}
+
+/* ===== 3D 家园 ===== */
+#view-home .view-scroll{display:flex;flex-direction:column;overflow:hidden}
+.build-wrap{flex:1;display:flex;flex-direction:column;gap:10px;min-height:0}
+#build3d{position:relative;flex:1;min-height:320px;border-radius:20px;overflow:hidden;background:#DDE9DC;box-shadow:var(--shadow);touch-action:none}
+#build3d canvas{display:block;outline:none}
+.build-tools{position:absolute;left:10px;top:10px;z-index:5;display:flex;gap:6px;flex-wrap:wrap;max-width:70%}
+.build-tools .chip{padding:8px 14px;font-size:12px;min-height:44px;background:rgba(255,253,248,.92);box-shadow:var(--shadow)}
+.build-tools .chip.on{background:var(--green);color:#fff}
+.build-cams{position:absolute;right:10px;top:10px;z-index:5;display:flex;flex-direction:column;gap:6px}
+.build-cams button{width:44px;height:44px;border-radius:13px;background:rgba(255,253,248,.94);border:1px solid var(--line);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;color:var(--green-deep);transition:background .15s}
+.build-cams button.on{background:var(--green);color:#fff;border-color:var(--green)}
+.build-cams svg{width:22px;height:22px}
+.build-hint{position:absolute;left:10px;right:10px;bottom:10px;z-index:5;text-align:center;font-size:11px;color:rgba(62,58,51,.62);background:rgba(255,253,248,.88);border-radius:10px;padding:6px 10px;pointer-events:none}
+.build-sel{position:absolute;left:10px;bottom:56px;z-index:5;font-size:11px;font-weight:900;color:var(--green-deep);background:rgba(255,253,248,.92);border:1px solid var(--green-soft);border-radius:999px;padding:5px 12px;pointer-events:none;display:none}
+.build-sel.show{display:block}
+#actionBar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:6;display:none;gap:8px;background:var(--card);border-radius:14px;padding:8px;box-shadow:var(--shadow-lift);border:1px solid var(--line)}
+#actionBar.show{display:flex}
+.ab-btn{display:flex;align-items:center;gap:5px;padding:9px 14px;border-radius:11px;font-size:12px;font-weight:900;background:var(--green-soft);color:var(--green-deep);min-height:44px}
+.ab-btn.danger{background:#FDECE2;color:var(--orange-deep)}
+.ab-btn svg{width:16px;height:16px}
+
+/* ===== 家具图鉴栏 ===== */
+.shelf-panel{flex:none;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:10px;box-shadow:var(--shadow)}
+.shelf-panel .shelf-title{font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;padding-left:2px}
+.shelf{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.shelf::-webkit-scrollbar{display:none}
+.shelf-card{flex:none;width:74px;display:flex;flex-direction:column;align-items:center;gap:3px;background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:8px 4px 6px;transition:transform .15s,border-color .15s}
+.shelf-card:active{transform:scale(.94)}
+.shelf-card.sel{border-color:var(--orange);background:#FFF6F1}
+.shelf-card.owned{border-color:var(--green)}
+.shelf-card.locked{opacity:.92}
+.shelf-card .ic{width:40px;height:40px;display:flex;align-items:center;justify-content:center}
+.shelf-card .ic svg{width:38px;height:38px}
+.shelf-card .nm{font-size:11px;font-weight:700;line-height:1.2;text-align:center;white-space:nowrap}
+.shelf-card .st{font-size:10px;font-weight:900}
+.shelf-card.owned .st{color:var(--green)}
+.shelf-card.locked .st{color:var(--orange-deep)}
+.shelf-card.owned .ic{filter:grayscale(0)}
+.shelf-card.locked .ic{filter:grayscale(.85);opacity:.75}
+
+/* ===== 装扮 ===== */
+#dress-stage{flex:none;display:flex;justify-content:center;padding:6px 0 2px}
+.doll-card{position:relative;width:100%;background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);overflow:hidden}
+.doll-bg{position:absolute;inset:0;background:radial-gradient(circle at 50% 108%,var(--green-soft) 0 34%,transparent 70%)}
+.doll-svg{position:relative;display:flex;justify-content:center}
+.doll-svg svg{height:250px;width:auto;display:block;margin:0 auto}
+.doll-name{position:absolute;left:0;right:0;top:12px;text-align:center;font-size:13px;font-weight:900;letter-spacing:.06em}
+.doll-mood{position:absolute;left:0;right:0;top:32px;text-align:center;font-size:10px;color:var(--ink-soft)}
+.dress-list{flex:1;overflow-y:auto;padding:2px 2px 20px;scrollbar-width:none}
+.dress-list::-webkit-scrollbar{display:none}
+.item-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.item-card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:9px 6px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;transition:transform .15s,border-color .15s}
+.item-card:active{transform:scale(.95)}
+.item-card .ic{width:44px;height:44px;display:flex;align-items:center;justify-content:center}
+.item-card .ic svg{width:42px;height:42px}
+.item-card .nm{font-size:11px;font-weight:700;text-align:center;line-height:1.25}
+.item-card .st{font-size:10px;font-weight:900}
+.item-card.own .st{color:var(--green)}
+.item-card.lock .st{color:var(--orange-deep)}
+.item-card.eq{border-color:var(--orange);background:#FFF6F1}
+.item-card.eq .st{color:var(--orange-deep)}
+.item-card .ic.lock{filter:grayscale(.85);opacity:.7}
+
+/* ===== 社区 ===== */
+.pond-card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px;box-shadow:var(--shadow);margin-bottom:14px}
+.pond-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.pond-head .tt{font-size:14px;font-weight:900}
+.pond-head .casts{font-size:11px;color:var(--ink-soft);font-weight:700}
+.pond{position:relative;height:190px;border-radius:16px;overflow:hidden;background:linear-gradient(#CFE6F0 0 18%,#7FB6CE 18% 100%);box-shadow:inset 0 0 0 1px rgba(62,58,51,.06)}
+.pond .grass{position:absolute;left:0;right:0;top:18%;height:20px;background:#9DC08E}
+.pond .grass::before{content:"";position:absolute;left:0;right:0;top:-7px;height:14px;background:#B4D2A4;border-radius:50% 50% 0 0}
+.zone{position:absolute;top:26%;bottom:10%;width:90px;background:rgba(255,253,248,.55);border:2px dashed rgba(62,58,51,.25);border-radius:12px;transition:left .35s ease}
+.zone .zl{position:absolute;left:0;right:0;top:-20px;text-align:center;font-size:10px;font-weight:900;color:var(--green-deep);letter-spacing:.1em}
+.fish{position:absolute;top:58%;width:54px;height:34px;transform:translate(-50%,-50%);transition:left .06s linear;pointer-events:none;z-index:3}
+.fish.flip{transform:translate(-50%,-50%) scaleX(-1)}
+.fish svg{width:100%;height:100%;display:block}
+.rod-btn{width:100%;margin-top:12px;padding:12px 0;border-radius:14px;background:var(--orange);color:#fff;font-size:15px;font-weight:900;letter-spacing:.08em;box-shadow:0 5px 0 var(--orange-deep);transition:transform .1s,box-shadow .1s}
+.rod-btn:active{transform:translateY(3px);box-shadow:0 2px 0 var(--orange-deep)}
+.rod-btn:disabled{background:#C9BFAE;box-shadow:0 5px 0 #A99F8F;color:#fff}
+.pond-msg{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);background:var(--card);border-radius:12px;padding:8px 14px;font-size:13px;font-weight:900;box-shadow:var(--shadow-lift);z-index:5;opacity:0;transition:opacity .2s;white-space:nowrap;pointer-events:none}
+.pond-msg.show{opacity:1}
+.task-panel{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px;box-shadow:var(--shadow)}
+.task-panel .tt{font-size:14px;font-weight:900;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.task-row{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:12px;background:var(--paper);margin-bottom:8px}
+.task-row:last-child{margin-bottom:0}
+.task-ico{width:34px;height:34px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center}
+.task-ico svg{width:20px;height:20px}
+.task-txt{flex:1;font-size:12px;font-weight:700;line-height:1.4}
+.task-txt .prog{color:var(--ink-soft);font-size:10px;font-weight:500}
+.task-claim{flex:none;border-radius:10px;padding:11px 14px;font-size:11px;font-weight:900;background:var(--green);color:#fff;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center}
+.task-claim.done{background:var(--green-soft);color:var(--green-deep)}
+.task-claim:disabled{background:#E4DCCB;color:#A99F8F}
+.news-bar{margin-top:14px;background:var(--blue-soft);border-radius:14px;padding:10px 12px;font-size:11px;color:#4A6B7A;line-height:1.6}
+.news-bar b{color:var(--green-deep)}
+
+/* ===== 收集 ===== */
+.progress-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:13px 14px;box-shadow:var(--shadow);margin-bottom:12px}
+.progress-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px}
+.progress-top b{font-size:15px;color:var(--ink);font-weight:900}
+.pbar{height:10px;border-radius:999px;background:var(--green-soft);overflow:hidden}
+.pbar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--green),#7FA971);width:0;transition:width .4s ease}
+.coll-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.coll-card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 6px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;transition:transform .15s,border-color .15s}
+.coll-card:active{transform:scale(.95)}
+.coll-card .ic{width:46px;height:46px;display:flex;align-items:center;justify-content:center}
+.coll-card .ic svg{width:44px;height:44px}
+.coll-card .nm{font-size:10px;font-weight:700;text-align:center;line-height:1.2}
+.coll-card .buy{margin-top:2px;border-radius:9px;padding:10px 4px;font-size:10px;font-weight:900;background:var(--orange);color:#fff;box-shadow:0 2px 0 var(--orange-deep);min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:3px}
+.coll-card .buy:active{transform:translateY(2px);box-shadow:none}
+.coll-card.owned .ic{filter:none}
+.coll-card.locked .ic{filter:grayscale(.85);opacity:.7}
+.coll-card .ic.lock{filter:grayscale(.85);opacity:.7}
+
+/* ===== 引导浮层 ===== */
+#overlay{position:absolute;inset:0;z-index:50;background:rgba(61,86,66,.88);backdrop-filter:blur(3px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;color:#fff;text-align:center}
+#overlay .ov-logo{width:72px;height:72px;margin-bottom:16px;filter:drop-shadow(0 6px 14px rgba(0,0,0,.25))}
+#overlay h1{font-size:26px;font-weight:900;letter-spacing:.06em;margin-bottom:6px}
+#overlay .ov-sub{font-size:13px;opacity:.85;margin-bottom:26px;line-height:1.7}
+.ov-steps{display:flex;flex-direction:column;gap:14px;width:100%;margin-bottom:30px}
+.ov-step{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:12px 14px;text-align:left}
+.ov-step .n{flex:none;width:30px;height:30px;border-radius:50%;background:var(--butter);color:var(--green-deep);font-weight:900;font-size:14px;display:flex;align-items:center;justify-content:center}
+.ov-step .t{font-size:13px;font-weight:700;line-height:1.5}
+.ov-step .t small{display:block;font-weight:400;opacity:.8;font-size:11px;margin-top:2px}
+#start-btn{width:100%;padding:14px 0;border-radius:16px;background:var(--orange);color:#fff;font-size:16px;font-weight:900;letter-spacing:.1em;box-shadow:0 6px 0 var(--orange-deep)}
+#start-btn:active{transform:translateY(3px);box-shadow:0 3px 0 var(--orange-deep)}
+.ov-tag{margin-top:12px;font-size:11px;opacity:.6;letter-spacing:.04em}
+
+/* ===== Toast / 浮币 / 弹窗 ===== */
+#toast{position:absolute;left:50%;top:14%;transform:translateX(-50%);z-index:60;background:var(--card);color:var(--ink);border-radius:14px;padding:10px 18px;font-size:13px;font-weight:900;box-shadow:var(--shadow-lift);opacity:0;transition:opacity .22s,transform .22s;pointer-events:none;max-width:80%;text-align:center;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(6px)}
+#toast.good{border:1px solid var(--green)}
+#toast.bad{border:1px solid var(--orange)}
+.coin-fly{position:absolute;z-index:70;width:22px;height:22px;pointer-events:none;transition:transform .6s ease-out,opacity .6s ease-out}
+.coin-fly.hit{transform:translate(var(--fx),var(--fy)) scale(.6);opacity:0}
+.modal-mask{position:absolute;inset:0;z-index:80;background:rgba(62,58,51,.42);display:flex;align-items:center;justify-content:center;padding:28px}
+.modal{background:var(--card);border-radius:18px;padding:22px 20px 16px;max-width:290px;width:100%;box-shadow:var(--shadow-lift);text-align:center}
+.modal p{font-size:14px;font-weight:700;line-height:1.6;margin-bottom:16px}
+.modal-btns{display:flex;gap:10px}
+.modal-btns button{flex:1;padding:10px 0;border-radius:12px;font-size:13px;font-weight:900;min-height:44px}
+.m-no{background:var(--green-soft);color:var(--green-deep)}
+.m-ok{background:var(--orange);color:#fff}
+@media (min-width:641px){.stage-note{display:flex}}
+body.no-anim *{transition:none!important;animation:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="stage-bg"></div>
+<div id="stage">
+  <div class="stage-note" id="stageNote">
+    <div class="kicker">LIFESTYLE CREATION · 3D 可玩原型</div>
+    <h1>拾光小筑<br>建房工坊 Demo</h1>
+    <p>一款以自由建房与生活创作为核心的移动端3D模拟游戏。玩家可以从一块空地开始，自由设计房屋结构、室内布局与家具陈设，并通过生活活动持续获得新的创作内容。</p>
+    <div class="badges"><span class="badge">3D 自由建房</span><span class="badge">室内外一体设计</span><span class="badge">家具自由摆放</span><span class="badge">2D/3D 切换</span></div>
+  </div>
+  <div id="phone">
+    <header id="topbar">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 64 64"><rect x="6" y="20" width="52" height="38" rx="8" fill="#E8835A"/><path d="M6 26 L32 6 L58 26" fill="#4F6D54"/><rect x="26" y="36" width="12" height="22" rx="3" fill="#FBF6EC"/><circle cx="44" cy="30" r="3" fill="#F2CE8E"/></svg>
+        <div><div class="name">拾光小筑</div><div class="sub">创造理想生活</div></div>
+      </div>
+      <div class="coin-pill" id="coinPill">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#F2CE8E"/><circle cx="12" cy="12" r="10" fill="none" stroke="#D9AE5F" stroke-width="1.6"/><text x="12" y="15.6" font-size="9" text-anchor="middle" font-weight="900" fill="#A97E2F">¥</text></svg>
+        <span class="coin-num" id="coinNum">0</span>
+      </div>
+    </header>
+
+    <main id="content">
+      <!-- ===== 视图：家园（3D 建房工坊） ===== -->
+      <section class="view active" id="view-home">
+        <div class="view-scroll">
+          <div class="sec-title"><h2>3D 建房工坊</h2><span class="hint" id="homeHint">铺地板定户型 · 摆家具做装修</span></div>
+          <div class="build-wrap">
+            <div id="build3d">
+              <div class="build-tools" id="buildTools">
+                <button class="chip on" data-mode="floor">铺 地</button>
+                <button class="chip" data-mode="erase">拆 地</button>
+                <button class="chip" data-mode="furn">摆家具</button>
+              </div>
+              <div class="build-cams" id="buildCams">
+                <button id="camIso" title="斜视视角"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L21 8 L21 16 L12 21 L3 16 L3 8 Z"/><path d="M3 8 L12 13 L21 8"/><path d="M12 13 L12 21"/></svg></button>
+                <button id="camTop" title="俯视视角"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12 h16 M12 4 v16"/></svg></button>
+                <button id="roofBtn" title="屋顶开关" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 L12 4 L21 11"/><path d="M5.5 9.5 V20 H18.5 V9.5"/><path d="M10 20 v-5 h4 v5"/></svg></button>
+              </div>
+              <div class="build-sel" id="buildSel"></div>
+              <div class="build-hint" id="buildHint">在草地点按 / 拖动画出地板，墙体自动生成</div>
+              <div id="actionBar">
+                <button class="ab-btn" id="abRotate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12 a8 8 0 1 1 -2.4 -5.7"/><path d="M20 3 v4 h-4"/></svg>旋转</button>
+                <button class="ab-btn danger" id="abRemove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7 h14 M9 7 V5 h6 v2 M8 7 l1 13 h6 l1 -13"/></svg>收回</button>
+              </div>
+            </div>
+            <div class="shelf-panel">
+              <div class="shelf-title">家具图鉴 · 点选后回到 3D 画面点击地面摆放</div>
+              <div class="shelf" id="shelf"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 视图：装扮 ===== -->
+      <section class="view" id="view-dress">
+        <div class="view-scroll" style="display:flex;flex-direction:column">
+          <div class="sec-title"><h2>角色装扮</h2><span class="hint" id="dressHint">集齐一套，点亮今日心情</span></div>
+          <div id="dress-stage">
+            <div class="doll-card">
+              <div class="doll-bg"></div>
+              <div class="doll-name" id="dollName">小筑居民 · 阿拾</div>
+              <div class="doll-mood" id="dollMood">今天也是元气满满的一天</div>
+              <div class="doll-svg" id="dollSvg"></div>
+            </div>
+          </div>
+          <div class="chips" id="dressChips"></div>
+          <div class="dress-list" id="dressList"></div>
+        </div>
+      </section>
+
+      <!-- ===== 视图：社区 ===== -->
+      <section class="view" id="view-community">
+        <div class="view-scroll">
+          <div class="sec-title"><h2>小镇社区</h2><span class="hint" id="commHint">钓鱼赚金币，还能捞到稀有好物</span></div>
+          <div class="pond-card">
+            <div class="pond-head"><div class="tt">午后垂钓</div><div class="casts" id="castInfo">今日 0 / 5 次</div></div>
+            <div class="pond" id="pond">
+              <div class="grass"></div>
+              <div class="zone" id="zone"><span class="zl">鱼群</span></div>
+              <div class="fish" id="fish"></div>
+              <div class="pond-msg" id="pondMsg"></div>
+            </div>
+            <button class="rod-btn" id="rodBtn">甩 竿</button>
+          </div>
+          <div class="task-panel">
+            <div class="tt">今日社区任务</div>
+            <div id="taskList"></div>
+          </div>
+          <div class="news-bar" id="newsBar"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M5 19 C5 9 12 4 20 4 C20 12 15 19 5 19 Z"/><path d="M5 19 C9 15 12 12 15 8"/></svg>社区小报：<b>阿婆的苹果熟了</b>，去庭院看看？屋里摆件越多，路过的小镇居民越喜欢。</div>
+        </div>
+      </section>
+
+      <!-- ===== 视图：收集 ===== -->
+      <section class="view" id="view-collection">
+        <div class="view-scroll">
+          <div class="sec-title"><h2>收藏图鉴</h2><span class="hint">钓鱼 / 任务攒金币，解锁全部家具与穿搭</span></div>
+          <div class="progress-card">
+            <div class="progress-top"><span>收集进度</span><b id="progText">0 / 24</b></div>
+            <div class="pbar"><i id="progBar"></i></div>
+          </div>
+          <div class="chips" id="collChips"></div>
+          <div class="coll-grid" id="collGrid"></div>
+        </div>
+      </section>
+    </main>
+
+    <nav id="tabbar">
+      <button class="tab on" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 L12 3.5 L21 10.5"/><path d="M5.5 9.5 V20 H18.5 V9.5"/><path d="M10 20 v-6 h4 v6"/></svg>
+        <span class="t-label">家园</span>
+      </button>
+      <button class="tab" data-tab="dress">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3.6"/><path d="M6.5 20 c0-4 2.4-7 5.5-7 s5.5 3 5.5 7"/></svg>
+        <span class="t-label">装扮</span>
+      </button>
+      <button class="tab" data-tab="community">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 c0-4.5 4-8 9-8 s9 3.5 9 8 c0 2.4-1.2 4.5-3 6"/><path d="M3 12 l-1.5 4 a2.2 2.2 0 0 0 4.2.9 L7 15.5"/><path d="M21 12 l1.5 4 a2.2 2.2 0 0 1 -4.2.9 L17 15.5"/></svg>
+        <span class="t-label">社区</span>
+      </button>
+      <button class="tab" data-tab="collection">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5 h16 v11 a1.6 1.6 0 0 1 -1.6 1.6 H5.6 A1.6 1.6 0 0 1 4 18.5 Z"/><path d="M8 7.5 V6 a4 4 0 0 1 8 0 v1.5"/><path d="M12 11.5 v5"/><path d="M9.5 14 h5"/></svg>
+        <span class="t-label">收集</span>
+      </button>
+    </nav>
+
+    <!-- 引导浮层 -->
+    <div id="overlay">
+      <svg class="ov-logo" viewBox="0 0 64 64"><rect x="6" y="20" width="52" height="38" rx="8" fill="#E8835A"/><path d="M6 26 L32 6 L58 26" fill="#F2CE8E"/><rect x="26" y="36" width="12" height="22" rx="3" fill="#FBF6EC"/><circle cx="44" cy="30" r="3" fill="#fff"/></svg>
+      <h1>拾光小筑</h1>
+      <div class="ov-sub">创造你的理想生活——<br>从一块空地，到独一无二的小家</div>
+      <div class="ov-steps">
+        <div class="ov-step"><span class="n">01</span><div class="t">搭建户型<small>在地块中拖拽绘制房屋轮廓，墙体自动生成</small></div></div>
+        <div class="ov-step"><span class="n">02</span><div class="t">装修与布置<small>放置门窗、家具与材质，自由调整位置、旋转和配色</small></div></div>
+        <div class="ov-step"><span class="n">03</span><div class="t">生活与收集<small>通过小镇活动获取新的家具、服饰与装饰，再回到住宅继续创作</small></div></div>
+      </div>
+      <button id="start-btn">开 始 建 房</button>
+      <div class="ov-tag">Prototype v0.1 ｜ 核心建造流程验证</div>
+    </div>
+    <div id="toast"></div>
+  </div>
+</div>
+<script>
+/* ================= 数据：家具 ================= */
+const L='#4A463E';
+const FURN=[
+{id:'sofa',name:'布艺沙发',rarity:'common',price:120,svg:`<svg viewBox="0 0 64 64"><rect x="10" y="19" width="44" height="9" rx="4.5" fill="#D9A96F" stroke="${L}" stroke-width="2.5"/><rect x="8" y="26" width="48" height="24" rx="6" fill="#E8B98A" stroke="${L}" stroke-width="2.5"/><rect x="14" y="31" width="16" height="12" rx="4" fill="#F4E3C8" stroke="${L}" stroke-width="2.2"/><rect x="34" y="31" width="16" height="12" rx="4" fill="#F4E3C8" stroke="${L}" stroke-width="2.2"/><rect x="6" y="40" width="52" height="8" rx="4" fill="#A9714A" stroke="${L}" stroke-width="2.2"/></svg>`},
+{id:'table',name:'原木茶几',rarity:'common',price:80,svg:`<svg viewBox="0 0 64 64"><rect x="10" y="24" width="44" height="8" rx="3" fill="#C68F58" stroke="${L}" stroke-width="2.5"/><rect x="20" y="32" width="4" height="14" fill="#A9714A" stroke="${L}" stroke-width="1.8"/><rect x="40" y="32" width="4" height="14" fill="#A9714A" stroke="${L}" stroke-width="1.8"/><rect x="13" y="46" width="38" height="4" rx="2" fill="#A9714A" stroke="${L}" stroke-width="2"/><circle cx="24" cy="20" r="4" fill="#8FB87F" stroke="${L}" stroke-width="2"/><circle cx="40" cy="19" r="3" fill="#F2CE8E" stroke="${L}" stroke-width="2"/></svg>`},
+{id:'lamp',name:'落地灯',rarity:'common',price:90,svg:`<svg viewBox="0 0 64 64"><path d="M32 40 V22" stroke="${L}" stroke-width="3" stroke-linecap="round"/><path d="M20 22 h24 l-6 -10 h-12 Z" fill="#F2CE8E" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 23 q10 7 20 0" fill="none" stroke="#F6E2A4" stroke-width="2"/><path d="M26 40 h12 v10 h-12 Z" fill="#B98A5E" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 50 h20" stroke="${L}" stroke-width="2.5" stroke-linecap="round"/></svg>`},
+{id:'plant',name:'龟背竹盆栽',rarity:'common',price:60,svg:`<svg viewBox="0 0 64 64"><path d="M33 31 c6 -12 14 -16 20 -16 -2 8 -8 14 -20 16 Z" fill="#7FA971" stroke="#3D5642" stroke-width="2.5" stroke-linejoin="round"/><path d="M31 29 c-7 -10 -14 -12 -19 -9 3 7 10 10 19 9 Z" fill="#8FB87F" stroke="#3D5642" stroke-width="2.5" stroke-linejoin="round"/><path d="M32 30 v8" stroke="#4F6D54" stroke-width="2.6" stroke-linecap="round"/><path d="M25 34 h14 v18 h-14 Z" fill="#C68F58" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 52 h20 l-2 5 h-16 Z" fill="#A9714A" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/></svg>`},
+{id:'shelf',name:'木质书架',rarity:'rare',price:160,svg:`<svg viewBox="0 0 64 64"><rect x="10" y="10" width="44" height="44" rx="4" fill="#C68F58" stroke="${L}" stroke-width="2.5"/><path d="M10 26 h44 M10 42 h44" stroke="${L}" stroke-width="2.4"/><rect x="15" y="15" width="12" height="7" rx="2" fill="#E8835A"/><rect x="31" y="15" width="9" height="7" rx="2" fill="#8FB87F"/><rect x="15" y="30" width="8" height="8" rx="2" fill="#F2CE8E"/><rect x="27" y="30" width="14" height="8" rx="2" fill="#8FB8C9"/><rect x="15" y="46" width="12" height="5" rx="2" fill="#A9714A"/></svg>`},
+{id:'rug',name:'条纹地毯',rarity:'common',price:70,svg:`<svg viewBox="0 0 64 64"><rect x="8" y="14" width="48" height="34" rx="6" fill="#D9A96F" stroke="${L}" stroke-width="2.5"/><rect x="15" y="21" width="34" height="6" rx="3" fill="#F4E3C8"/><rect x="15" y="31" width="34" height="6" rx="3" fill="#E8835A" opacity=".9"/><rect x="15" y="41" width="34" height="4" rx="2" fill="#F4E3C8"/><path d="M16 48 h4 M28 48 h4 M40 48 h4" stroke="${L}" stroke-width="2" stroke-linecap="round"/></svg>`},
+{id:'tv',name:'电视柜',rarity:'rare',price:180,svg:`<svg viewBox="0 0 64 64"><rect x="10" y="16" width="44" height="28" rx="3" fill="#5A6770" stroke="#3E4A52" stroke-width="2.5"/><rect x="14" y="20" width="36" height="20" rx="2" fill="#BFE0EF"/><circle cx="22" cy="28" r="3" fill="#F2CE8E"/><path d="M16 37 L26 29 L32 34 L40 25 L48 33" stroke="#4F6D54" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M26 52 h12 v-9 h-12 Z" fill="${L}"/><rect x="28" y="43" width="8" height="3" fill="#8C8274"/></svg>`},
+{id:'bed',name:'双人床',rarity:'rare',price:200,svg:`<svg viewBox="0 0 64 64"><rect x="12" y="14" width="40" height="12" rx="4" fill="#F4E3C8" stroke="${L}" stroke-width="2.5"/><rect x="8" y="22" width="48" height="26" rx="5" fill="#C68F58" stroke="${L}" stroke-width="2.5"/><rect x="12" y="27" width="40" height="9" rx="3" fill="#EAF2F5" stroke="${L}" stroke-width="1.6"/><circle cx="46" cy="18" r="3.4" fill="#F2CE8E" stroke="${L}" stroke-width="1.8"/><rect x="16" y="46" width="6" height="6" fill="#A9714A"/><rect x="42" y="46" width="6" height="6" fill="#A9714A"/></svg>`},
+{id:'painting',name:'落日挂画',rarity:'common',price:75,svg:`<svg viewBox="0 0 64 64"><rect x="30" y="5" width="4" height="9" fill="#A9714A"/><rect x="14" y="14" width="36" height="36" rx="3" fill="#8FB8C9" stroke="${L}" stroke-width="2.5"/><circle cx="27" cy="27" r="5" fill="#F2CE8E" stroke="${L}" stroke-width="1.8"/><path d="M18 46 L30 34 L38 42 L50 30" stroke="${L}" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`},
+{id:'chair',name:'藤编摇椅',rarity:'rare',price:150,svg:`<svg viewBox="0 0 64 64"><path d="M15 32 h34 v12 a9 9 0 0 1 -9 9 h-16 a9 9 0 0 1 -9 -9 Z" fill="#C68F58" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M17 38 q15 5 30 0 M17 44 q15 5 30 0" fill="none" stroke="#A9714A" stroke-width="2"/><path d="M15 32 h-3 a7 7 0 0 0 -7 7 v2 h10 M49 32 h3 a7 7 0 0 1 7 7 v2 h-10" fill="none" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 53 q10 -5 20 0" fill="none" stroke="${L}" stroke-width="2.6" stroke-linecap="round"/></svg>`}
+];
+const CLOTH=[
+{id:'bob',name:'元气短发',cat:'hair',rarity:'common',price:0,icon:`<svg viewBox="0 0 64 64"><circle cx="32" cy="34" r="17" fill="#F6D7B8" stroke="${L}" stroke-width="2.4"/><path d="M16 36 q0 -22 16 -22 q16 0 16 22 q-1 18 -10 20 q-2 -14 -6 -14 q-4 0 -6 14 q-9 -2 -10 -20Z" fill="#6B4F3A" stroke="${L}" stroke-width="2.2"/></svg>`},
+{id:'wave',name:'慵懒长卷发',cat:'hair',rarity:'rare',price:140,icon:`<svg viewBox="0 0 64 64"><circle cx="32" cy="30" r="15" fill="#F6D7B8" stroke="${L}" stroke-width="2.4"/><path d="M17 32 q0 -20 15 -20 q15 0 15 20 q-1 26 -4 30 q-3 3 -5 -6 q-1 -10 -6 -10 q-5 0 -6 10 q-2 9 -5 6 q-3 -4 -4 -30Z" fill="#8A5A33" stroke="${L}" stroke-width="2.2"/></svg>`},
+{id:'buns',name:'双丸子头',cat:'hair',rarity:'rare',price:150,icon:`<svg viewBox="0 0 64 64"><circle cx="32" cy="34" r="16" fill="#F6D7B8" stroke="${L}" stroke-width="2.4"/><path d="M17 38 q0 -20 15 -20 q15 0 15 20 q-2 8 -6 8 q-2 -10 -9 -10 q-7 0 -9 10 q-4 0 -6 -8Z" fill="#7A4E33" stroke="${L}" stroke-width="2.2"/><circle cx="19" cy="22" r="8" fill="#7A4E33" stroke="${L}" stroke-width="2.2"/><circle cx="45" cy="22" r="8" fill="#7A4E33" stroke="${L}" stroke-width="2.2"/></svg>`},
+{id:'tee',name:'奶白T恤',cat:'top',rarity:'common',price:0,icon:`<svg viewBox="0 0 64 64"><path d="M18 22 h28 l6 8 -8 4 -2 -4 v24 h-20 v-24 l-2 4 -8 -4 Z" fill="#FBF6EC" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/></svg>`},
+{id:'hoodie',name:'姜黄卫衣',cat:'top',rarity:'common',price:90,icon:`<svg viewBox="0 0 64 64"><path d="M16 24 q0 -10 16 -10 q16 0 16 10 l6 8 -8 4 -2 -4 v22 h-24 v-22 l-2 4 -8 -4 Z" fill="#E0A63C" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M30 14 q-1 -6 2 -6 q3 0 2 6" fill="none" stroke="${L}" stroke-width="2.5"/><rect x="26" y="34" width="12" height="7" rx="2" fill="#C68F58" stroke="${L}" stroke-width="2"/></svg>`},
+{id:'blouse',name:'樱花衬衫',cat:'top',rarity:'rare',price:140,icon:`<svg viewBox="0 0 64 64"><path d="M20 22 h24 l5 8 -8 4 -2 -5 v25 h-14 v-25 l-2 5 -8 -4 Z" fill="#F2A7A0" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M24 22 l8 8 l8 -8" fill="none" stroke="${L}" stroke-width="2.5"/><circle cx="32" cy="34" r="1.8" fill="${L}"/></svg>`},
+{id:'jacket',name:'格纹外套',cat:'top',rarity:'epic',price:200,icon:`<svg viewBox="0 0 64 64"><path d="M16 22 h32 l6 8 -8 4 -2 -4 v24 h-24 v-24 l-2 4 -8 -4 Z" fill="#B0844A" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M32 22 v32 M20 34 q12 5 24 0" stroke="#8C5A33" stroke-width="2" fill="none"/></svg>`},
+{id:'shorts',name:'卡其短裤',cat:'bottom',rarity:'common',price:0,icon:`<svg viewBox="0 0 64 64"><path d="M18 22 h28 v12 q0 10 -7 10 h-3 v-12 h-8 v12 h-3 q-7 0 -7 -10 Z" fill="#C9A27E" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/></svg>`},
+{id:'skirt',name:'藏蓝百褶裙',cat:'bottom',rarity:'common',price:100,icon:`<svg viewBox="0 0 64 64"><path d="M18 22 h28 l-5 22 h-18 Z" fill="#4F6D54" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><path d="M27 22 l-4 22 M37 22 l4 22" stroke="#3D5642" stroke-width="2"/></svg>`},
+{id:'overalls',name:'牛仔背带裤',cat:'bottom',rarity:'rare',price:150,icon:`<svg viewBox="0 0 64 64"><path d="M18 22 h28 v26 q0 6 -4 6 h-6 v-12 h-8 v12 h-6 q-4 0 -4 -6 Z" fill="#7E9BC4" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><rect x="22" y="22" width="20" height="10" rx="2" fill="#7E9BC4" stroke="${L}" stroke-width="2.5"/><path d="M27 22 v-3 a5 5 0 0 1 10 0 v3" fill="none" stroke="${L}" stroke-width="2.5"/></svg>`},
+{id:'pants',name:'米色长裤',cat:'bottom',rarity:'common',price:85,icon:`<svg viewBox="0 0 64 64"><path d="M18 20 h28 v28 h-9 v-16 h-10 v16 h-9 Z" fill="#EDE3CE" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/></svg>`},
+{id:'glasses',name:'圆框眼镜',cat:'acc',rarity:'common',price:70,icon:`<svg viewBox="0 0 64 64"><circle cx="23" cy="32" r="9" fill="none" stroke="#3D5642" stroke-width="3.2"/><circle cx="41" cy="32" r="9" fill="none" stroke="#3D5642" stroke-width="3.2"/><path d="M32 32 h2" stroke="#3D5642" stroke-width="3"/><path d="M14 32 h-2 M50 32 h2" stroke="#3D5642" stroke-width="3"/></svg>`},
+{id:'beret',name:'贝雷帽',cat:'acc',rarity:'rare',price:120,icon:`<svg viewBox="0 0 64 64"><ellipse cx="32" cy="26" rx="22" ry="11" fill="#E8835A" stroke="${L}" stroke-width="2.5"/><path d="M32 15 q-1 -7 2 -7 q3 0 2 7" fill="none" stroke="${L}" stroke-width="2.5"/><circle cx="32" cy="16" r="2.2" fill="${L}"/></svg>`},
+{id:'bag',name:'帆布挎包',cat:'acc',rarity:'rare',price:130,icon:`<svg viewBox="0 0 64 64"><path d="M22 22 q10 8 20 0" fill="none" stroke="#B98A5E" stroke-width="3.2" stroke-linecap="round"/><rect x="14" y="26" width="36" height="26" rx="5" fill="#B98A5E" stroke="${L}" stroke-width="2.5"/><path d="M14 34 h36" stroke="${L}" stroke-width="2"/><rect x="24" y="38" width="16" height="10" rx="3" fill="#C68F58" stroke="${L}" stroke-width="2"/></svg>`}
+];
+const ALL=FURN.concat(CLOTH);
+const BYID={};ALL.forEach(i=>BYID[i.id]=i);
+const RAR={common:['普通','rar-common'],rare:['稀有','rar-rare'],epic:['典藏','rar-epic']};
+
+/* ================= 状态 ================= */
+const KEY='shiguang_save_v2';
+const GRID_N=7;
+const DEF_GRID=[
+[0,0,0,0,0,0,0],
+[0,1,1,1,0,0,0],
+[0,1,1,1,1,0,0],
+[0,1,1,1,1,0,0],
+[0,0,1,1,1,0,0],
+[0,0,0,0,0,0,0],
+[0,0,0,0,0,0,0]
+];
+const DEFAULTS={coins:120,ownedF:['sofa','plant','rug'],ownedC:{hair:['bob'],top:['tee'],bottom:['shorts'],acc:[]},eq:{hair:'bob',top:'tee',bottom:'shorts',acc:null},claimed:{furn:false,dress:false,fish:false},fishCaught:0,casts:0,grid:JSON.parse(JSON.stringify(DEF_GRID)),placed:[{id:'sofa',cell:{r:2,c:2},rot:0},{id:'plant',cell:{r:3,c:3},rot:0}],roof:true};
+let S;
+function load(){try{const r=localStorage.getItem(KEY);if(r){S=JSON.parse(r);Object.keys(DEFAULTS).forEach(k=>{if(S[k]===undefined)S[k]=JSON.parse(JSON.stringify(DEFAULTS[k]))});return true}}catch(e){}return false}
+if(!load())S=JSON.parse(JSON.stringify(DEFAULTS));
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+/* ================= 工具 ================= */
+const $=s=>document.querySelector(s);
+const $$=s=>document.querySelectorAll(s);
+const coinSVG=`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#F2CE8E"/><circle cx="12" cy="12" r="10" fill="none" stroke="#D9AE5F" stroke-width="1.6"/><text x="12" y="15.6" font-size="9" text-anchor="middle" font-weight="900" fill="#A97E2F">¥</text></svg>`;
+function toast(msg,good=true){const t=$('#toast');t.textContent=msg;t.className=good?'show good':'show bad';clearTimeout(t._h);t._h=setTimeout(()=>t.className='',1400)}
+let AC=null;
+function beep(f,dur=0.12,type='sine',vol=0.05){try{if(!AC)return;const o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.value=f;g.gain.value=vol;o.connect(g);g.connect(AC.destination);o.start();g.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+dur);o.stop(AC.currentTime+dur)}catch(e){}}
+function sfx(name){if(!AC)return;if(name==='coin'){beep(740,.1);setTimeout(()=>beep(988,.14),70)}else if(name==='buy'){beep(523,.1);setTimeout(()=>beep(659,.12),70)}else if(name==='miss'){beep(220,.25,'triangle')}else if(name==='unlock'){beep(660,.1);setTimeout(()=>beep(880,.16),90)}else if(name==='tap'){beep(440,.05,'sine',.03)}else if(name==='place'){beep(520,.08);setTimeout(()=>beep(700,.1),60)}}
+function addCoins(n,el){S.coins+=n;updateCoin();const r=el?el.getBoundingClientRect():null;const tgt=$('#coinPill').getBoundingClientRect();const f=document.createElement('div');f.className='coin-fly';f.innerHTML=coinSVG;const phone=$('#phone').getBoundingClientRect();if(r){f.style.left=(r.left-phone.left+r.width/2-11)+'px';f.style.top=(r.top-phone.top+r.height/2-11)+'px'}else{f.style.left='50%';f.style.top='40%'}f.style.setProperty('--fx',(tgt.left-phone.left-(r?(r.left-phone.left):phone.width/2))+'px');f.style.setProperty('--fy',(tgt.top-phone.top-(r?(r.top-phone.top):phone.height*0.4))+'px');$('#phone').appendChild(f);requestAnimationFrame(()=>requestAnimationFrame(()=>f.classList.add('hit')));setTimeout(()=>f.remove(),650)}
+function updateCoin(){const n=$('#coinNum');const v=parseInt(n.textContent)||0;n.textContent=S.coins;if(S.coins>v){n.style.transform='scale(1.25)';setTimeout(()=>n.style.transform='',180)}}
+
+/* ================= 视图切换 ================= */
+let curTab='home';
+function switchTab(tab){curTab=tab;$$('.view').forEach(v=>v.classList.remove('active'));$('#view-'+tab).classList.add('active');$$('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));if(tab==='community')initFishing();if(tab==='home'){renderShelf();resize3d();}if(tab==='dress'){renderDressChips();renderDressList();}if(tab==='collection')renderCollection();}
+$$('.tab').forEach(b=>b.addEventListener('click',()=>{sfx('tap');switchTab(b.dataset.tab)}));
+
+/* ================= 3D 建房工坊 ================= */
+const CELL=1.2,HALF=(GRID_N-1)/2;
+const build3d=$('#build3d');
+function showNo3D(){build3d.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:var(--ink-soft);padding:20px;text-align:center">当前环境不支持 3D 渲染（WebGL），请换用桌面 Chrome / Edge 打开体验</div>'}
+let renderer=null,scene,camera,controls,raycaster,groundPlane;
+let R3D={floors:[],walls:[],furn:[],roof:null,ring:null,hover:null};
+let paintMode='floor',paletteSel=null,selIdx=-1;
+let resize3d=()=>{};
+var updateHint=function(){};
+let ndc=null;
+function cellToWorld(r,c){return new THREE.Vector3((c-HALF)*CELL,0,(r-HALF)*CELL)}
+function tryRender(){try{return new THREE.WebGLRenderer({antialias:true})}catch(e){return null}}
+
+function start3D(){
+  if(!renderer){renderer=tryRender();if(!renderer){showNo3D();return}}
+  ndc=new THREE.Vector2();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  renderer.domElement.style.width='100%';renderer.domElement.style.height='100%';
+  build3d.appendChild(renderer.domElement);
+
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0xE3EEE0);
+  scene.fog=new THREE.Fog(0xE3EEE0,18,34);
+
+  camera=new THREE.PerspectiveCamera(45,1,0.1,100);
+  camera.position.set(6.0,5.0,6.0);
+
+  const hemi=new THREE.HemisphereLight(0xFFFFFF,0xC9DCC8,0.5);scene.add(hemi);
+  const dir=new THREE.DirectionalLight(0xFFFFFF,0.7);
+  dir.position.set(6,11,4);dir.castShadow=true;
+  dir.shadow.mapSize.set(1024,1024);
+  dir.shadow.camera.left=-8;dir.shadow.camera.right=8;
+  dir.shadow.camera.top=8;dir.shadow.camera.bottom=-8;
+  dir.shadow.camera.near=1;dir.shadow.camera.far=30;
+  scene.add(dir);
+
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(36,36),new THREE.MeshLambertMaterial({color:0x9DC08E}));
+  ground.rotation.x=-Math.PI/2;ground.position.y=-0.02;ground.receiveShadow=true;scene.add(ground);
+
+  groundPlane=new THREE.Mesh(new THREE.PlaneGeometry(36,36),new THREE.MeshBasicMaterial({visible:false,side:THREE.DoubleSide}));
+  groundPlane.rotation.x=-Math.PI/2;scene.add(groundPlane);
+
+  const gridHelper=new THREE.GridHelper(GRID_N*CELL,GRID_N,0x7FA971,0x7FA971);
+  gridHelper.position.y=0.005;
+  gridHelper.material.opacity=0.35;gridHelper.material.transparent=true;
+  scene.add(gridHelper);
+
+  raycaster=new THREE.Raycaster();
+
+  /* ---- 3D 家具构建器 ---- */
+  function M(c){return new THREE.MeshLambertMaterial({color:c})}
+  function box(w,h,d,mat,x=0,y=0,z=0){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);return m}
+  const WOOD=M(0xC68F58),WOOD2=M(0xA9714A),WOOD3=M(0x8C5A33);
+  const BUILDERS={
+    sofa(){const g=new THREE.Group();
+      g.add(box(1.02,0.4,0.5,M(0xD9A96F),0,0.2,0.04));
+      g.add(box(1.02,0.5,0.16,M(0xC8905A),0,0.45,-0.3));
+      g.add(box(0.15,0.36,0.52,M(0xC8905A),-0.44,0.36,0.04));
+      g.add(box(0.15,0.36,0.52,M(0xC8905A),0.44,0.36,0.04));
+      g.add(box(0.36,0.09,0.32,M(0xF4E3C8),-0.23,0.27,0.06));
+      g.add(box(0.36,0.09,0.32,M(0xF4E3C8),0.23,0.27,0.06));
+      return g;},
+    table(){const g=new THREE.Group();
+      g.add(box(0.82,0.08,0.52,WOOD,0,0.42,0));
+      [[-0.35,-0.2],[0.35,-0.2],[-0.35,0.2],[0.35,0.2]].forEach(([x,z])=>g.add(box(0.06,0.4,0.06,WOOD2,x,0.2,z)));
+      g.add(box(0.18,0.03,0.18,M(0x8FB87F),0,0.48,0));
+      return g;},
+    lamp(){const g=new THREE.Group();
+      const base=new THREE.Mesh(new THREE.CylinderGeometry(0.19,0.21,0.05,20),WOOD2);base.position.y=0.025;g.add(base);
+      const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.028,0.5,12),M(0x4A463E));pole.position.y=0.3;g.add(pole);
+      const shade=new THREE.Mesh(new THREE.ConeGeometry(0.24,0.2,20),M(0xF2CE8E));shade.position.y=0.62;g.add(shade);
+      const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.06,12,8),new THREE.MeshBasicMaterial({color:0xFFF3C4}));bulb.position.y=0.55;g.add(bulb);
+      return g;},
+    plant(){const g=new THREE.Group();
+      const pot=new THREE.Mesh(new THREE.CylinderGeometry(0.19,0.15,0.24,16),WOOD);pot.position.y=0.12;g.add(pot);
+      const rim=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.19,0.05,16),WOOD2);rim.position.y=0.24;g.add(rim);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.03,0.3,8),M(0x4F6D54));stem.position.y=0.38;g.add(stem);
+      const l1=new THREE.Mesh(new THREE.SphereGeometry(0.17,12,10),M(0x7FA971));l1.position.set(0.1,0.5,0);g.add(l1);
+      const l2=new THREE.Mesh(new THREE.SphereGeometry(0.13,12,10),M(0x8FB87F));l2.position.set(-0.12,0.46,0.05);g.add(l2);
+      const l3=new THREE.Mesh(new THREE.SphereGeometry(0.11,10,8),M(0x7FA971));l3.position.set(-0.02,0.62,-0.04);g.add(l3);
+      return g;},
+    shelf(){const g=new THREE.Group();
+      g.add(box(0.92,0.82,0.2,WOOD,0,0.41,0));
+      [0.2,0.45,0.7].forEach(y=>g.add(box(0.88,0.03,0.16,WOOD2,0,y,0)));
+      const books=[[-0.28,0.34,-0.02,0xE8835A],[0.05,0.32,-0.02,0x8FB87F],[0.3,0.35,-0.02,0x4F6D54],[0.12,0.58,-0.02,0xF2CE8E],[-0.05,0.6,-0.02,0xE8835A],[0.32,0.59,-0.02,0x8FB8C9]];
+      books.forEach(([x,y,z,c])=>g.add(box(0.14,0.2,0.14,M(c),x,y,z)));
+      return g;},
+    rug(){const g=new THREE.Group();
+      g.add(box(0.98,0.02,0.78,M(0xD9A96F),0,0.012,0));
+      g.add(box(0.99,0.03,0.13,M(0xF4E3C8),0,0.03,-0.2));
+      g.add(box(0.99,0.03,0.13,M(0xF4E3C8),0,0.03,0.2));
+      g.add(box(0.99,0.035,0.14,M(0xE8835A),0,0.036,0));
+      return g;},
+    tv(){const g=new THREE.Group();
+      const cons=box(0.7,0.26,0.3,WOOD,0,0.13,0);g.add(cons);
+      const body=box(0.56,0.32,0.06,M(0x4A463E),0,0.37,0.03);g.add(body);
+      const scr=new THREE.Mesh(new THREE.BoxGeometry(0.48,0.24,0.02),new THREE.MeshBasicMaterial({color:0xBFE0EF}));scr.position.set(0,0.37,0.075);g.add(scr);
+      const sun=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.08,0.01),new THREE.MeshBasicMaterial({color:0xF2CE8E}));sun.position.set(-0.12,0.41,0.09);g.add(sun);
+      [[-0.28,0.12],[-0.28,-0.12],[0.28,0.12],[0.28,-0.12]].forEach(([x,z])=>g.add(box(0.05,0.06,0.05,M(0x3E4A52),x,0.03,z)));
+      return g;},
+    bed(){const g=new THREE.Group();
+      g.add(box(1.04,0.3,0.76,WOOD,0,0.15,0));
+      g.add(box(0.98,0.13,0.7,M(0xF4E3C8),0,0.34,0));
+      g.add(box(1.0,0.44,0.09,WOOD2,0,0.42,-0.38));
+      g.add(box(0.26,0.08,0.32,M(0xFFFDF8),-0.22,0.43,-0.24));
+      g.add(box(0.26,0.08,0.32,M(0xFFFDF8),0.22,0.43,-0.24));
+      g.add(box(0.6,0.05,0.5,M(0xE8835A),0,0.44,0.12));
+      return g;},
+    painting(){const g=new THREE.Group();
+      [[-0.13,0],[0.13,0]].forEach(([x,z])=>g.add(box(0.045,0.56,0.045,WOOD3,x,0.42,0)));
+      g.add(box(0.36,0.28,0.03,M(0x8FB8C9),0,0.68,0.03));
+      const sun=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.1,0.012),new THREE.MeshBasicMaterial({color:0xF2CE8E}));sun.position.set(-0.07,0.72,0.055);g.add(sun);
+      g.add(box(0.2,0.05,0.012,M(0x4F6D54),0.03,0.58,0.055));
+      return g;},
+    chair(){const g=new THREE.Group();
+      g.add(box(0.44,0.09,0.44,WOOD,0,0.42,0));
+      g.add(box(0.44,0.46,0.07,WOOD,0,0.68,-0.2));
+      g.add(box(0.4,0.09,0.44,M(0xD9A96F),0,0.35,-0.02));
+      [[-0.17,-0.16],[0.17,-0.16],[-0.17,0.16],[0.17,0.16]].forEach(([x,z])=>g.add(box(0.055,0.4,0.055,WOOD3,x,0.2,z)));
+      return g;}
+  };
+
+  /* ---- 场景重建 ---- */
+  function disposeMesh(m){if(!m)return;if(m.geometry)m.geometry.dispose();if(m.material){if(Array.isArray(m.material))m.material.forEach(x=>x.dispose());else m.material.dispose()}}
+  function clearScene(){
+    R3D.floors.concat(R3D.walls,R3D.furn).forEach(g=>{scene.remove(g);g.traverse(o=>{if(o.isMesh)disposeMesh(o)})});
+    if(R3D.roof){scene.remove(R3D.roof);R3D.roof.traverse(o=>{if(o.isMesh)disposeMesh(o)})}
+    if(R3D.ring){scene.remove(R3D.ring);disposeMesh(R3D.ring)}
+    hideHover();
+    R3D={floors:[],walls:[],furn:[],roof:null,ring:null,hover:null};
+  }
+  function rebuildScene(){
+    clearScene();
+    const WOODF=M(0xC89A62);
+    S.grid.forEach((row,r)=>row.forEach((v,c)=>{
+      if(!v)return;
+      const p=cellToWorld(r,c);
+      const m=box(CELL-0.02,0.16,CELL-0.02,WOODF,p.x,0.08,p.z);
+      m.receiveShadow=true;scene.add(m);R3D.floors.push(m);
+    }));
+    const edgeMap={};
+    S.grid.forEach((row,r)=>row.forEach((v,c)=>{
+      if(!v)return;
+      [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc])=>{
+        const nr=r+dr,nc=c+dc;
+        const empty=nr<0||nr>=GRID_N||nc<0||nc>=GRID_N||!S.grid[nr][nc];
+        if(empty)edgeMap['e'+r+'_'+c+'_'+dr+'_'+dc]=[r,c,dr,dc];
+      });
+    }));
+    const WM=new THREE.MeshLambertMaterial({color:0xFAF3E4});
+    Object.values(edgeMap).forEach(([r,c,dr,dc])=>{
+      const p=cellToWorld(r,c);const hw=CELL/2+0.06;
+      const m=dr!==0?box(CELL+0.1,1.5,0.1,WM,p.x,0.75,p.z+(dr>0?hw:-hw)):box(0.1,1.5,CELL+0.1,WM,p.x+(dc>0?hw:-hw),0.75,p.z);
+      m.castShadow=true;m.receiveShadow=true;scene.add(m);R3D.walls.push(m);
+    });
+    S.placed.forEach((p,i)=>{
+      const g=BUILDERS[p.id]();
+      const wp=cellToWorld(p.cell.r,p.cell.c);
+      g.position.set(wp.x,0,wp.z);g.rotation.y=p.rot*Math.PI/2;
+      g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
+      g.userData.idx=i;scene.add(g);R3D.furn.push(g);
+    });
+    rebuildRoof();
+    if(selIdx>=0&&selIdx<S.placed.length)showRing(selIdx);
+  }
+  function rebuildRoof(){
+    if(R3D.roof){scene.remove(R3D.roof);R3D.roof.traverse(o=>{if(o.isMesh)disposeMesh(o)});R3D.roof=null}
+    if(!S.roof)return;
+    let minR=GRID_N,maxR=-1,minC=GRID_N,maxC=-1;
+    S.grid.forEach((row,r)=>row.forEach((v,c)=>{if(v){minR=Math.min(minR,r);maxR=Math.max(maxR,r);minC=Math.min(minC,c);maxC=Math.max(maxC,c)}}));
+    if(minR>maxR)return;
+    const w=(maxC-minC+1)*CELL+0.28,d=(maxR-minR+1)*CELL+0.28;
+    const cx=((minC+maxC)/2-HALF)*CELL,cz=((minR+maxR)/2-HALF)*CELL;
+    const roof=new THREE.Mesh(new THREE.BoxGeometry(w,0.06,d),new THREE.MeshLambertMaterial({color:0xF2DFB8,transparent:true,opacity:0.2,side:THREE.DoubleSide,depthWrite:false}));
+    roof.position.set(cx,1.55,cz);scene.add(roof);R3D.roof=roof;
+  }
+  function showRing(idx){
+    if(R3D.ring){scene.remove(R3D.ring);disposeMesh(R3D.ring);R3D.ring=null}
+    const p=S.placed[idx];if(!p)return;
+    const wp=cellToWorld(p.cell.r,p.cell.c);
+    const ring=new THREE.Mesh(new THREE.RingGeometry(0.5,0.64,36),new THREE.MeshBasicMaterial({color:0xF2CE8E,transparent:true,opacity:0.85,side:THREE.DoubleSide}));
+    ring.rotation.x=-Math.PI/2;ring.position.set(wp.x,0.04,wp.z);
+    scene.add(ring);R3D.ring=ring;
+  }
+  function hideRing(){if(R3D.ring){scene.remove(R3D.ring);disposeMesh(R3D.ring);R3D.ring=null}}
+  function hideHover(){if(R3D.hover){scene.remove(R3D.hover);disposeMesh(R3D.hover);R3D.hover=null}}
+  function showHoverCell(cell,ok){
+    hideHover();
+    if(!cell)return;
+    const wp=cellToWorld(cell.r,cell.c);
+    const h=new THREE.Mesh(new THREE.BoxGeometry(CELL-0.05,0.02,CELL-0.05),new THREE.MeshBasicMaterial({color:ok?0xFFFFFF:0xE8835A,transparent:true,opacity:0.3}));
+    h.position.set(wp.x,0.03,wp.z);scene.add(h);R3D.hover=h;
+  }
+
+  /* ---- 拾取 ---- */
+  function setRay(e){
+    const rect=renderer.domElement.getBoundingClientRect();
+    ndc.x=((e.clientX-rect.left)/rect.width)*2-1;
+    ndc.y=-((e.clientY-rect.top)/rect.height)*2+1;
+    raycaster.setFromCamera(ndc,camera);
+  }
+  function pickCell(e){
+    setRay(e);
+    const hit=raycaster.intersectObject(groundPlane,false)[0];
+    if(!hit)return null;
+    const r=Math.round(hit.point.z/CELL+HALF),c=Math.round(hit.point.x/CELL+HALF);
+    if(r<0||r>=GRID_N||c<0||c>=GRID_N)return null;
+    return {r,c};
+  }
+  function pickFurn(e){
+    setRay(e);
+    const hit=raycaster.intersectObjects(R3D.furn,true)[0];
+    if(!hit)return null;
+    let o=hit.object;
+    while(o&&o.userData.idx===undefined)o=o.parent;
+    return o&&o.userData.idx!==undefined?o.userData.idx:null;
+  }
+  function occupied(cell){return S.placed.some(p=>p.cell.r===cell.r&&p.cell.c===cell.c)}
+
+  /* ---- 指针交互（先于 OrbitControls 注册，编辑手势独占） ---- */
+  let editing=false,dragIdx=-1,downPos=null,lastCell=null,activePtr=0;
+  const cv=renderer.domElement;
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  cv.addEventListener('pointerdown',e=>{
+    activePtr++;
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    if(activePtr>1)return;
+    const cell=pickCell(e);const fi=pickFurn(e);
+    if(paintMode==='furn'){
+      if(fi!==null){dragIdx=fi;selectFurn(fi);editing=true;controls.enabled=false;downPos=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId);e.preventDefault();return}
+      if(cell){editing=true;controls.enabled=false;downPos=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId);e.preventDefault();return}
+      clearSelection();
+    }else if(cell){
+      editing=true;controls.enabled=false;lastCell=null;
+      cv.setPointerCapture(e.pointerId);e.preventDefault();
+      paintCell(cell);
+    }else{
+      clearSelection();
+    }
+  });
+  cv.addEventListener('pointermove',e=>{
+    if(e.pointerType==='mouse'){
+      const cell=pickCell(e);const fi=pickFurn(e);
+      cv.style.cursor=(cell||fi!==null)?'pointer':'grab';
+      if(paintMode==='furn'&&fi===null)showHoverCell(cell,!occupied(cell));
+      else if(paintMode!=='furn')showHoverCell(cell,true);
+      else hideHover();
+    }
+    if(!editing||activePtr>1)return;
+    if(dragIdx>=0){
+      const cell=pickCell(e);
+      if(cell&&(!occupied(cell)||(S.placed[dragIdx].cell.r===cell.r&&S.placed[dragIdx].cell.c===cell.c))){
+        S.placed[dragIdx].cell={r:cell.r,c:cell.c};
+        const wp=cellToWorld(cell.r,cell.c);
+        R3D.furn[dragIdx].position.set(wp.x,0,wp.z);
+        showRing(dragIdx);
+      }
+      return;
+    }
+    if(paintMode!=='furn'){
+      const cell=pickCell(e);
+      if(cell&&(!lastCell||lastCell.r!==cell.r||lastCell.c!==cell.c)){paintCell(cell);lastCell=cell}
+    }
+  });
+  function onUp(ev){
+    activePtr=Math.max(0,activePtr-1);
+    const wasEdit=editing;editing=false;
+    if(dragIdx>=0){dragIdx=-1;save();sfx('tap');}
+    else if(wasEdit&&paintMode==='furn'&&downPos&&ev){
+      const moved=Math.hypot(ev.clientX-downPos[0],ev.clientY-downPos[1]);
+      if(moved<7){
+        const cell=pickCell(ev);
+        if(cell){
+          if(occupied(cell)){const fi=S.placed.findIndex(p=>p.cell.r===cell.r&&p.cell.c===cell.c);if(fi>=0)selectFurn(fi);}
+          else placeFurn3d(cell);
+        }
+      }
+    }
+    downPos=null;lastCell=null;controls.enabled=true;
+  }
+  cv.addEventListener('pointerup',onUp);
+  cv.addEventListener('pointercancel',()=>{activePtr=0;editing=false;dragIdx=-1;downPos=null;controls.enabled=true});
+
+  /* ---- 铺 / 拆 / 摆 ---- */
+  function paintCell(cell){
+    if(paintMode==='floor'){
+      if(!S.grid[cell.r][cell.c]){S.grid[cell.r][cell.c]=1;rebuildScene();sfx('tap');}
+    }else if(paintMode==='erase'){
+      if(S.grid[cell.r][cell.c]){
+        S.grid[cell.r][cell.c]=0;
+        S.placed=S.placed.filter(p=>!(p.cell.r===cell.r&&p.cell.c===cell.c));
+        if(selIdx>=S.placed.length)selIdx=-1;
+        rebuildScene();sfx('tap');
+      }
+    }
+  }
+  function placeFurn3d(cell){
+    if(!paletteSel){toast('先在图鉴里选一件家具',false);return}
+    if(!S.ownedF.includes(paletteSel)){toast('先在图鉴里解锁这件家具',false);return}
+    if(occupied(cell)){toast('这个位置已经有家具了',false);return}
+    S.placed.push({id:paletteSel,cell:{r:cell.r,c:cell.c},rot:0});
+    save();sfx('place');
+    rebuildScene();
+    selectFurn(S.placed.length-1);
+    renderTasks();
+  }
+  function selectFurn(idx){
+    selIdx=idx;
+    const p=S.placed[idx];
+    if(p){showRing(idx);$('#buildSel').textContent='已选中：'+BYID[p.id].name;$('#buildSel').classList.add('show');$('#actionBar').classList.add('show')}
+    else clearSelection();
+  }
+  function clearSelection(){selIdx=-1;hideRing();$('#buildSel').classList.remove('show');$('#actionBar').classList.remove('show')}
+  $('#abRotate').addEventListener('click',()=>{if(selIdx<0)return;sfx('tap');S.placed[selIdx].rot=(S.placed[selIdx].rot+1)%4;R3D.furn[selIdx].rotation.y=S.placed[selIdx].rot*Math.PI/2;save();});
+  $('#abRemove').addEventListener('click',()=>{if(selIdx<0)return;sfx('tap');const p=S.placed[selIdx];S.placed.splice(selIdx,1);clearSelection();rebuildScene();save();toast('已收回「'+BYID[p.id].name+'」');renderTasks();});
+
+  /* ---- 工具模式 ---- */
+  $('#buildTools').addEventListener('click',e=>{
+    const b=e.target.closest('.chip');if(!b)return;
+    sfx('tap');paintMode=b.dataset.mode;
+    $$('#buildTools .chip').forEach(x=>x.classList.toggle('on',x===b));
+    if(paintMode!=='furn'){paletteSel=null;renderShelf();}
+    clearSelection();hideHover();updateHint();
+  });
+  updateHint=function(){
+    const map={floor:'在草地点按 / 拖动画出地板，墙体自动生成 · 右键拖动可转视角',erase:'点击 / 拖动拆除地板，家具会一并收回 · 户型随你改',furn:'点选下方图鉴家具，再点击屋内地面摆放 · 拖动能移动 · 点击选中后可旋转、收回'};
+    $('#buildHint').textContent=paintMode==='furn'&&paletteSel?('已选「'+BYID[paletteSel].name+'」· 点击地面摆放'):map[paintMode];
+  };
+
+  /* ---- 视角 / 屋顶 ---- */
+  $('#camIso').addEventListener('click',()=>{sfx('tap');camera.position.set(6.0,5.0,6.0);controls.target.set(0,0.7,0);controls.update()});
+  $('#camTop').addEventListener('click',()=>{sfx('tap');camera.position.set(0.01,12.5,0.01);controls.target.set(0,0.6,0);controls.update()});
+  $('#roofBtn').addEventListener('click',()=>{sfx('tap');S.roof=!S.roof;$('#roofBtn').classList.toggle('on',S.roof);rebuildRoof();save()});
+
+  /* ---- 控制器（后创建，编辑手势优先） ---- */
+  controls=new THREE.OrbitControls(camera,renderer.domElement);
+  controls.enableDamping=true;controls.dampingFactor=0.08;
+  controls.target.set(0,0.7,0);
+  controls.minDistance=3;controls.maxDistance=24;
+  controls.maxPolarAngle=Math.PI/2-0.06;
+  controls.mouseButtons={LEFT:-1,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
+
+  resize3d=function(){
+    const w=build3d.clientWidth,h=build3d.clientHeight;
+    if(!w||!h)return;
+    renderer.setSize(w,h,false);
+    camera.aspect=w/h;camera.updateProjectionMatrix();
+  };
+  window.addEventListener('resize',resize3d);
+  rebuildScene();
+  resize3d();
+  (function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)})();
+}
+
+/* ---- CDN 兜底引导：jsdelivr 失败时自动切 unpkg ---- */
+(function boot3D(){
+  if(window.THREE&&window.THREE.OrbitControls){start3D();return}
+  const urls=['https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js','https://unpkg.com/three@0.147.0/build/three.min.js'];
+  let i=0;
+  function loadControls(){
+    if(window.THREE&&window.THREE.OrbitControls){start3D();return}
+    const s=document.createElement('script');
+    s.src='https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js';
+    s.onload=()=>{if(window.THREE&&window.THREE.OrbitControls)start3D();else showNo3D()};
+    s.onerror=showNo3D;
+    document.head.appendChild(s);
+  }
+  function next(){
+    if(i>=urls.length){showNo3D();return}
+    const s=document.createElement('script');
+    s.src=urls[i++];
+    s.onload=loadControls;
+    s.onerror=next;
+    document.head.appendChild(s);
+  }
+  next();
+})();
+
+/* ================= 家园图鉴（3D 家具） ================= */
+function renderShelf(){
+  $('#shelf').innerHTML=FURN.map(f=>{
+    const owned=S.ownedF.includes(f.id);
+    const sel=paletteSel===f.id;
+    return `<div class="shelf-card ${owned?'owned':'locked'} ${sel?'sel':''}" data-id="${f.id}"><div class="ic">${f.svg}</div><div class="nm">${f.name}</div><div class="st">${sel?'已选中':owned?'可摆放':(coinSVG+f.price)}</div></div>`;
+  }).join('');
+  $$('#shelf .shelf-card').forEach(c=>c.addEventListener('click',()=>{
+    sfx('tap');
+    const f=BYID[c.dataset.id];
+    if(!S.ownedF.includes(f.id)){buyItem(f,c);return}
+    if(paintMode!=='furn'){paintMode='furn';$$('#buildTools .chip').forEach(x=>x.classList.toggle('on',x.dataset.mode==='furn'));}
+    paletteSel=f.id;renderShelf();updateHint();
+  }));
+}
+function buyItem(item,el){
+  if(S.coins<item.price){toast('金币不够，去社区钓鱼赚一点吧',false);return}
+  confirmModal(`花费 ${item.price} 金币入手「${item.name}」？`,()=>{
+    S.coins-=item.price;S.ownedF.push(item.id);save();sfx('buy');updateCoin();
+    paintMode='furn';$$('#buildTools .chip').forEach(x=>x.classList.toggle('on',x.dataset.mode==='furn'));
+    paletteSel=item.id;renderShelf();renderCollection();updateHint();toast('入手「'+item.name+'」· 点击地面摆放');
+  });
+}
+
+/* ================= 装扮 ================= */
+let dressCat='hair';
+const DRESS_CATS=[['hair','发型'],['top','上衣'],['bottom','下装'],['acc','配饰']];
+function renderDressChips(){$('#dressChips').innerHTML=DRESS_CATS.map(([c,l])=>`<button class="chip ${c===dressCat?'on':''}" data-cat="${c}">${l}</button>`).join('');$$('#dressChips .chip').forEach(b=>b.addEventListener('click',()=>{sfx('tap');dressCat=b.dataset.cat;renderDressChips();renderDressList()}));}
+function renderDressList(){const list=CLOTH.filter(c=>c.cat===dressCat);$('#dressList').innerHTML=`<div class="item-grid">`+list.map(c=>{const owned=S.ownedC[c.cat].includes(c.id);const eq=S.eq[c.cat]===c.id;return `<div class="item-card ${owned?(eq?'eq':'own'):'lock'}" data-id="${c.id}"><div class="ic ${owned?'':'lock'}">${c.icon}</div><div class="nm">${c.name}</div><div class="st">${eq?'已装备':owned?(c.price?'点击装备':'初始款'):(coinSVG+c.price)}</div></div>`}).join('')+`</div>`;$$('#dressList .item-card').forEach(c=>c.addEventListener('click',()=>{sfx('tap');const it=BYID[c.dataset.id];if(!S.ownedC[it.cat].includes(it.id)){buyCloth(it,c);return}equip(it)}));}
+function buyCloth(it,el){if(S.coins<it.price){toast('金币不够，去社区钓鱼赚一点吧',false);return}confirmModal(`花费 ${it.price} 金币入手「${it.name}」？`,()=>{S.coins-=it.price;S.ownedC[it.cat].push(it.id);save();sfx('buy');updateCoin();equip(it);renderDressList();renderCollection();toast('入手「'+it.name+'」');})}
+function equip(it){S.eq[it.cat]=it.id;save();sfx('tap');renderDoll();renderDressList();renderTasks();toast('已穿上「'+it.name+'」');updateMood();}
+
+const SKIN='#F6D7B8';
+const HAIR_DOLL={
+bob:{back:`<path d="M84 74 Q86 44 120 44 Q154 44 156 74 L158 98 Q158 114 146 118 Q141 96 120 96 Q99 96 94 118 Q82 114 84 98 Z" fill="#6B4F3A" stroke="${L}" stroke-width="2.6"/>`,front:`<path d="M87 78 Q91 52 120 50 Q149 52 153 78 Q148 62 120 62 Q92 62 87 78 Z" fill="#6B4F3A" stroke="${L}" stroke-width="2.4"/>`},
+wave:{back:`<path d="M84 74 Q86 44 120 44 Q154 44 156 74 L158 100 Q159 118 147 122 Q142 100 120 100 Q98 100 93 122 Q81 118 84 100 Z M96 122 q-3 18 -4 26 q-1 10 4 12 q4 -4 2 -16 q-1 -9 3 -14 Z M144 122 q3 18 4 26 q1 10 -4 12 q-4 -4 -2 -16 q1 -9 -3 -14 Z" fill="#8A5A33" stroke="${L}" stroke-width="2.6"/>`,front:`<path d="M87 78 Q91 52 120 50 Q149 52 153 78 Q148 62 120 62 Q92 62 87 78 Z" fill="#8A5A33" stroke="${L}" stroke-width="2.4"/>`},
+buns:{back:`<path d="M84 78 Q86 48 120 48 Q154 48 156 78 Q156 92 146 94 Q143 74 120 74 Q97 74 94 94 Q84 92 84 78 Z" fill="#7A4E33" stroke="${L}" stroke-width="2.6"/>`,front:`<circle cx="88" cy="54" r="15" fill="#7A4E33" stroke="${L}" stroke-width="2.6"/><circle cx="152" cy="54" r="15" fill="#7A4E33" stroke="${L}" stroke-width="2.6"/><path d="M88 72 Q92 52 120 50 Q148 52 152 72 Q147 58 120 58 Q93 58 88 72 Z" fill="#7A4E33" stroke="${L}" stroke-width="2.4"/>`}
+};
+const TOP_DOLL={
+tee:`<path d="M86 130 Q86 118 120 118 Q154 118 154 130 L160 150 Q166 158 158 162 L148 160 L146 194 Q144 201 137 201 L103 201 Q96 201 94 194 L92 160 L82 162 Q74 158 80 150 Z" fill="#FBF6EC" stroke="${L}" stroke-width="2.6"/><path d="M106 120 q14 12 28 0" fill="none" stroke="${L}" stroke-width="2.2"/>`,
+hoodie:`<path d="M84 132 Q84 116 120 116 Q156 116 156 132 L160 150 Q166 158 158 162 L148 160 L146 194 Q144 201 137 201 L103 201 Q96 201 94 194 L92 160 L82 162 Q74 158 80 150 Z" fill="#E0A63C" stroke="${L}" stroke-width="2.6"/><path d="M120 116 q-1 -8 4 -8 q5 0 4 8" fill="none" stroke="${L}" stroke-width="2.4"/><path d="M106 124 q14 8 28 0" fill="none" stroke="${L}" stroke-width="2.2"/><rect x="106" y="150" width="28" height="14" rx="4" fill="#C68F58" stroke="${L}" stroke-width="2.2"/><path d="M108 156 h24" stroke="${L}" stroke-width="1.8"/>`,
+blouse:`<path d="M86 128 Q86 116 120 116 Q154 116 154 128 L160 148 Q166 156 158 160 L148 158 L146 194 Q144 201 137 201 L103 201 Q96 201 94 194 L92 158 L82 160 Q74 156 80 148 Z" fill="#F2A7A0" stroke="${L}" stroke-width="2.6"/><path d="M96 118 l24 14 l24 -14" fill="none" stroke="${L}" stroke-width="2.4"/><path d="M108 138 l12 12 l12 -12" fill="none" stroke="${L}" stroke-width="2.2"/><circle cx="120" cy="156" r="2" fill="${L}"/><path d="M120 162 v14" stroke="${L}" stroke-width="1.8" stroke-dasharray="2 3"/>`,
+jacket:`<path d="M84 132 Q84 116 120 116 Q156 116 156 132 L160 150 Q166 158 158 162 L148 160 L146 194 Q144 201 137 201 L103 201 Q96 201 94 194 L92 160 L82 162 Q74 158 80 150 Z" fill="#B0844A" stroke="${L}" stroke-width="2.6"/><path d="M120 118 v83 M96 134 q24 8 48 0" stroke="#8C5A33" stroke-width="2.2" fill="none"/><path d="M104 122 q16 6 32 0 M106 134 q14 4 28 0 M108 146 q12 4 24 0" stroke="#8C5A33" stroke-width="1.8" fill="none" opacity=".8"/>`
+};
+const BOT_DOLL={
+shorts:`<path d="M100 196 h40 v14 q0 9 -7 9 h-5 v-9 h-16 v9 h-5 q-7 0 -7 -9 Z" fill="#C9A27E" stroke="${L}" stroke-width="2.5"/>`,
+skirt:`<path d="M96 196 h48 l-6 30 q-18 6 -36 0 Z" fill="#4F6D54" stroke="${L}" stroke-width="2.5"/><path d="M112 196 l-6 30 M128 196 l6 30" stroke="#3D5642" stroke-width="2"/>`,
+overalls:`<path d="M102 176 h36 v18 l8 22 q0 6 -5 6 h-7 v-14 h-28 v14 h-7 q-5 0 -5 -6 l8 -22 Z" fill="#7E9BC4" stroke="${L}" stroke-width="2.5"/><rect x="102" y="160" width="36" height="18" rx="4" fill="#7E9BC4" stroke="${L}" stroke-width="2.5"/><path d="M112 164 v-5 a8 8 0 0 1 16 0 v5" fill="none" stroke="${L}" stroke-width="2.4"/><circle cx="112" cy="168" r="1.6" fill="${L}"/><circle cx="128" cy="168" r="1.6" fill="${L}"/>`,
+pants:`<path d="M100 196 h40 v44 h-9 v-26 h-22 v26 h-9 Z" fill="#EDE3CE" stroke="${L}" stroke-width="2.5"/><path d="M120 196 v30" stroke="#C9B28A" stroke-width="1.6"/>`
+};
+const ACC_DOLL={
+glasses:`<circle cx="103" cy="86" r="11" fill="none" stroke="#3D5642" stroke-width="3"/><circle cx="137" cy="86" r="11" fill="none" stroke="#3D5642" stroke-width="3"/><path d="M114 86 h12" stroke="#3D5642" stroke-width="3"/><path d="M92 86 h-4 M148 86 h4" stroke="#3D5642" stroke-width="3"/>`,
+beret:`<ellipse cx="120" cy="52" rx="31" ry="12" fill="#E8835A" stroke="${L}" stroke-width="2.6"/><path d="M120 41 q-2 -7 3 -7 q5 0 3 7" fill="none" stroke="${L}" stroke-width="2.4"/><circle cx="120" cy="42" r="2.4" fill="${L}"/>`,
+bag:`<path d="M104 148 q14 34 62 38" fill="none" stroke="#B98A5E" stroke-width="4" stroke-linecap="round"/><rect x="158" y="170" width="30" height="24" rx="6" fill="#B98A5E" stroke="${L}" stroke-width="2.5"/><path d="M158 180 h30" stroke="${L}" stroke-width="2"/><rect x="167" y="182" width="12" height="8" rx="2" fill="#C68F58" stroke="${L}" stroke-width="1.8"/>`
+};
+function renderDoll(){const eq=S.eq;const hair=eq.hair?BYID[eq.hair]:BYID.bob;const top=eq.top?BYID[eq.top]:BYID.tee;const bot=eq.bottom?BYID[eq.bottom]:BYID.shorts;const acc=eq.acc?BYID[eq.acc]:null;
+const backHair=(HAIR_DOLL[hair.id]||{}).back||'';const frontHair=(HAIR_DOLL[hair.id]||{}).front||'';
+const topDoll=TOP_DOLL[top.id];const botDoll=BOT_DOLL[bot.id];const accDoll=acc?(ACC_DOLL[acc.id]||''):'';
+$('#dollSvg').innerHTML=`<svg viewBox="0 0 240 300">
+<g stroke-linejoin="round" stroke-linecap="round">
+${backHair}
+<path d="M102 196 h20 v66 a10 10 0 0 1 -20 0 Z" fill="${SKIN}" stroke="${L}" stroke-width="2.5"/>
+<path d="M118 196 h20 v66 a10 10 0 0 1 -20 0 Z" fill="${SKIN}" stroke="${L}" stroke-width="2.5"/>
+<path d="M84 136 Q84 126 120 126 Q156 126 156 136 L160 196 L80 196 Z" fill="${SKIN}" stroke="${L}" stroke-width="2.5"/>
+<path d="M84 134 a14 12 0 0 1 14 -12 h2 v52 h-16 Z" fill="${SKIN}" stroke="${L}" stroke-width="2.5"/>
+<path d="M156 134 a14 12 0 0 0 -14 -12 h-2 v52 h16 Z" fill="${SKIN}" stroke="${L}" stroke-width="2.5"/>
+<rect x="109" y="112" width="22" height="18" rx="8" fill="${SKIN}" stroke="${L}" stroke-width="2.5"/>
+${botDoll}
+${topDoll}
+<ellipse cx="120" cy="84" rx="36" ry="32" fill="${SKIN}" stroke="${L}" stroke-width="2.5"/>
+<ellipse cx="110" cy="266" rx="13" ry="7" fill="#C9A27E" stroke="${L}" stroke-width="2.4"/>
+<ellipse cx="130" cy="266" rx="13" ry="7" fill="#C9A27E" stroke="${L}" stroke-width="2.4"/>
+<circle cx="104" cy="86" r="3.1" fill="${L}"/><circle cx="136" cy="86" r="3.1" fill="${L}"/>
+<path d="M116 84 q2 -2 4 0" stroke="${L}" stroke-width="1.8" fill="none"/>
+<path d="M128 84 q2 -2 4 0" stroke="${L}" stroke-width="1.8" fill="none"/>
+<ellipse cx="96" cy="99" rx="6" ry="3.6" fill="#F2A7A0" opacity=".65"/>
+<ellipse cx="144" cy="99" rx="6" ry="3.6" fill="#F2A7A0" opacity=".65"/>
+<path d="M113 103 q7 7 14 0" stroke="${L}" stroke-width="2.2" fill="none"/>
+${frontHair}
+${accDoll}
+</g></svg>`;}
+function updateMood(){const eq=S.eq;const slots=[eq.top!=='tee',eq.bottom!=='shorts',eq.hair!=='bob',!!eq.acc].filter(Boolean).length;const m=slots>=4?'全套搭配，小镇最亮眼的崽！':slots>=2?'今天的穿搭很有想法':'基础款也有元气，慢慢攒新衣吧';$('#dollMood').textContent=m;}
+
+/* ================= 社区：钓鱼 ================= */
+const FISH_SVG=`<svg viewBox="0 0 54 34"><path d="M6 17 q0 -12 16 -12 h12 a14 14 0 0 1 0 24 H22 q-16 0 -16 -12 Z" fill="#E8835A" stroke="${L}" stroke-width="2.5"/><path d="M38 5 l12 12 -12 12" fill="#F2CE8E" stroke="${L}" stroke-width="2.5" stroke-linejoin="round"/><circle cx="13" cy="13" r="2.2" fill="${L}"/><path d="M9 9 q4 -4 8 0" stroke="${L}" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;
+const fish={x:24,dir:1,active:false,casting:false,bob:0};
+function initFishing(){const pond=$('#pond');if(!pond)return;const max=S.casts>=5;if(max){$('#zone').style.display='none';$('#rodBtn').disabled=true;$('#rodBtn').textContent='今日已钓完 · 明日再来';$('#fish').style.left='50%';$('#castInfo').textContent=`今日 ${S.casts} / 5 次`;return}$('#zone').style.display='block';$('#rodBtn').disabled=false;$('#rodBtn').textContent='甩 竿';$('#castInfo').textContent=`今日 ${S.casts} / 5 次`;if(!$('#zone')._zx)rollZone();if(!fish.active){fish.active=true;requestAnimationFrame(loop)}}
+function rollZone(){const pond=$('#pond');const W=pond.clientWidth;const z=$('#zone');z.style.left=(12+Math.random()*(W-88-24))+'px';z._zx=parseFloat(z.style.left);z._cx=z._zx+44;}
+function loop(ts){if(!fish.active)return;const dt=Math.min(32,ts-(fish._t||ts));fish._t=ts;const pond=$('#pond');const W=pond.clientWidth;const sp=Math.min(110,52+S.casts*8);if(!fish.casting){fish.x+=fish.dir*sp*dt/1000;if(fish.x>W-22){fish.x=W-22;fish.dir=-1}if(fish.x<22){fish.x=22;fish.dir=1}}fish.bob+=dt*0.005;const el=$('#fish');el.style.left=fish.x+'px';el.style.top=(50+Math.sin(fish.bob)*2)+'%';el.classList.toggle('flip',fish.dir<0);requestAnimationFrame(loop)}
+$('#rodBtn').addEventListener('click',()=>{if(fish.casting||S.casts>=5)return;if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}fish.casting=true;sfx('tap');const z=$('#zone'),pond=$('#pond');const W=pond.clientWidth;const cx=z._cx||W/2;const caught=Math.abs(fish.x-cx)<=50;setTimeout(()=>{if(caught){const g=25+Math.floor(Math.random()*31);sfx('coin');addCoins(g,$('#rodBtn'));S.fishCaught++;const unlock=Math.random()<0.3?unlockRandom():null;S.casts++;save();showPondMsg(unlock?`钓到啦！+${g} 金币 · 捞到「${unlock.name}」`:`钓到啦！+${g} 金币`);renderTasks()}else{sfx('miss');S.casts++;save();showPondMsg('差一点点！鱼跑掉了…')}setTimeout(()=>{fish.x=24;fish.dir=1;fish.casting=false;if(S.casts>=5){fish.active=false;$('#rodBtn').disabled=true;$('#rodBtn').textContent='今日已钓完 · 明日再来';$('#zone').style.display='none';$('#castInfo').textContent=`今日 ${S.casts} / 5 次`}else{rollZone();$('#castInfo').textContent=`今日 ${S.casts} / 5 次`}},900)},420)});
+function showPondMsg(m){const el=$('#pondMsg');el.textContent=m;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1300)}
+function unlockRandom(){const locked=ALL.filter(i=>{if(isFurn(i))return !S.ownedF.includes(i.id);return !S.ownedC[i.cat].includes(i.id)});if(!locked.length)return null;const it=locked[Math.floor(Math.random()*locked.length)];if(isFurn(it))S.ownedF.push(it.id);else S.ownedC[it.cat].push(it.id);save();sfx('unlock');renderCollection();return it;}
+
+/* ================= 社区：任务 ================= */
+const TASKS=[
+{id:'furn',label:'摆下 1 件家具',reward:40,icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 L12 3.5 L21 10.5"/><path d="M5.5 9.5 V20 H18.5 V9.5"/></svg>`,done:()=>S.placed.length>0,prog:()=>Math.min(1,S.placed.length)},
+{id:'dress',label:'换上 2 件新搭配',reward:40,icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3.6"/><path d="M6.5 20 c0-4 2.4-7 5.5-7 s5.5 3 5.5 7"/></svg>`,done:()=>nonDefault()>=2,prog:()=>Math.min(1,nonDefault()/2)},
+{id:'fish',label:'钓到 1 条鱼',reward:50,icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 h12 M18 12 l4 -3 v6 Z"/></svg>`,done:()=>S.fishCaught>=1,prog:()=>Math.min(1,S.fishCaught)}
+];
+function nonDefault(){const eq=S.eq;return [eq.top!=='tee',eq.bottom!=='shorts',eq.hair!=='bob',!!eq.acc].filter(Boolean).length}
+function renderTasks(){$('#taskList').innerHTML=TASKS.map(t=>{const done=t.done(),claimed=S.claimed[t.id];const pct=Math.round(t.prog()*100);return `<div class="task-row"><div class="task-ico" style="background:${done?'#E4EBE1':'#FFF0E6'}">${t.icon}</div><div class="task-txt">${t.label}<div class="prog">${claimed?'已领取':(done?'完成！':'进度 '+pct+'%')}</div></div><button class="task-claim ${done?'done':''}" data-id="${t.id}" ${(claimed||!done)?'disabled':''}>${claimed?'已领取':('+'+t.reward)}</button></div>`}).join('');$$('#taskList .task-claim').forEach(b=>b.addEventListener('click',()=>{if(b.disabled)return;sfx('coin');S.coins+=TASKS.find(t=>t.id===b.dataset.id).reward;S.claimed[b.dataset.id]=true;save();updateCoin();renderTasks();toast('任务奖励已到账')}));}
+
+/* ================= 收集 ================= */
+let collCat='all';
+const isFurn=i=>!!i.svg;
+function renderCollection(){$('#collChips').innerHTML=[['all','全部'],['furn','家具'],['cloth','衣物']].map(([c,l])=>`<button class="chip ${c===collCat?'on':''}" data-cat="${c}">${l}</button>`).join('');$$('#collChips .chip').forEach(b=>b.addEventListener('click',()=>{sfx('tap');collCat=b.dataset.cat;renderCollection()}));
+const total=ALL.length;const owned=ALL.filter(i=>isFurn(i)?S.ownedF.includes(i.id):S.ownedC[i.cat].includes(i.id)).length;$('#progText').textContent=`${owned} / ${total}`;$('#progBar').style.width=(owned/total*100)+'%';
+let list=ALL;if(collCat==='furn')list=FURN;if(collCat==='cloth')list=CLOTH;
+$('#collGrid').innerHTML=list.map(i=>{const ownedNow=isFurn(i)?S.ownedF.includes(i.id):S.ownedC[i.cat].includes(i.id);const r=RAR[i.rarity];return `<div class="coll-card ${ownedNow?'owned':'locked'}"><div class="ic ${ownedNow?'':'lock'}">${isFurn(i)?i.svg:i.icon}</div><div class="nm">${i.name}</div><div class="${r[1]}" style="font-size:10px;font-weight:900">${r[0]}</div>${ownedNow?'<div style="font-size:10px;font-weight:900;color:var(--green)">已拥有</div>':`<button class="buy" data-id="${i.id}">${coinSVG}${i.price}</button>`}</div>`}).join('');
+$$('#collGrid .buy').forEach(b=>b.addEventListener('click',()=>{sfx('tap');const it=BYID[b.dataset.id];if(isFurn(it))buyItem(it,b);else buyCloth(it,b)}));}
+
+/* ================= 购买确认弹窗 ================= */
+function confirmModal(msg,onOk){const old=document.querySelector('.modal-mask');if(old)old.remove();const m=document.createElement('div');m.className='modal-mask';m.innerHTML=`<div class="modal"><p>${msg}</p><div class="modal-btns"><button class="m-no">再想想</button><button class="m-ok">确认</button></div></div>`;$('#phone').appendChild(m);m.querySelector('.m-no').addEventListener('click',()=>m.remove());m.querySelector('.m-ok').addEventListener('click',()=>{m.remove();onOk()});m.addEventListener('click',e=>{if(e.target===m)m.remove()});}
+
+/* ================= 引导 & 初始化 ================= */
+function renderAll(){updateCoin();renderShelf();renderDoll();renderDressChips();renderDressList();renderTasks();renderCollection();updateMood();}
+renderAll();
+$('#start-btn').addEventListener('click',()=>{if(!document.getElementById('start-btn'))return;sfx('buy');$('#overlay').classList.add('hidden');});
+/* 深链：带 hash 直达对应页并跳过引导（#play / #home / #dress / #community / #collection） */
+const HASH_TAB={'#play':'home','#home':'home','#dress':'dress','#community':'community','#collection':'collection'};
+if(HASH_TAB[location.hash]){$('#overlay').classList.add('hidden');switchTab(HASH_TAB[location.hash]);}
+document.addEventListener('pointerdown',()=>{if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}},{once:true});
+/* 重置存档（收集页底部） */
+const resetRow=document.createElement('div');resetRow.style.cssText='text-align:center;margin-top:16px;font-size:11px;color:var(--ink-soft)';
+resetRow.innerHTML='<button id="resetBtn" style="padding:10px 18px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink-soft);min-height:44px">重置演示数据</button>';
+document.querySelector('#view-collection .view-scroll').appendChild(resetRow);
+$('#resetBtn').addEventListener('click',()=>confirmModal('确定清空存档、重新开始演示吗？',()=>{localStorage.removeItem(KEY);location.reload()}));
+</script>
+</body>
+</html>
